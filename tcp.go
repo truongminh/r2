@@ -3,15 +3,16 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"os"
-	"sync"
 	"syscall"
 )
 
-type tcpListener struct{ *net.TCPListener }
+type tcpListener struct {
+	*net.TCPListener
+	*qos
+}
 
 func newTcp(ctx context.Context, addr string) (listener *tcpListener, err error) {
 	lc := net.ListenConfig{}
@@ -20,6 +21,8 @@ func newTcp(ctx context.Context, addr string) (listener *tcpListener, err error)
 	if err != nil {
 		return
 	}
+	log.Printf("tcp listen on %s", addr)
+
 	li := ll.(*net.TCPListener)
 	fd, err := li.File()
 	if err != nil {
@@ -47,25 +50,10 @@ func newTcp(ctx context.Context, addr string) (listener *tcpListener, err error)
 	return
 }
 
-func tcpAddrToSocketAddr(addr *net.TCPAddr) syscall.Sockaddr {
-	ipv4 := addr.IP.To4()
-	ip := [4]byte{}
-	copy(ip[:], ipv4)
-	return &syscall.SockaddrInet4{Addr: ip, Port: addr.Port}
-}
-
-func (listener *tcpListener) dial(dst *net.TCPAddr) (conn *net.TCPConn, err error) {
-	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, syscall.IPPROTO_TCP)
+func (listener *tcpListener) open() (fd int, err error) {
+	fd, err = syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, syscall.IPPROTO_TCP)
 	if err != nil {
 		err = &net.OpError{Op: "dial", Err: fmt.Errorf("socket open: %s", err)}
-		return
-	}
-	// incoming IP_TRANSPARENT socket already used the port
-	// reuse the port for the outgoing socket here
-	err = syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
-	if err != nil {
-		syscall.Close(fd)
-		err = &net.OpError{Op: "dial", Err: fmt.Errorf("setsockopt SO_REUSEADDR: %s", err)}
 		return
 	}
 	err = syscall.SetsockoptInt(fd, syscall.SOL_IP, syscall.IP_TRANSPARENT, 1)
@@ -74,12 +62,26 @@ func (listener *tcpListener) dial(dst *net.TCPAddr) (conn *net.TCPConn, err erro
 		err = &net.OpError{Op: "dial", Err: fmt.Errorf("setsockopt IP_TRANSPARENT: %s", err)}
 		return
 	}
+	// err = syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
+	// if err != nil {
+	// 	syscall.Close(fd)
+	// 	err = &net.OpError{Op: "dial", Err: fmt.Errorf("setsockopt SO_REUSEADDR: %s", err)}
+	// 	return
+	// }
 	// err = syscall.SetNonblock(fd, true)
 	// if err != nil {
 	// 	syscall.Close(fd)
 	// 	err = &net.OpError{Op: "dial", Err: fmt.Errorf("setsockopt SO_NONBLOCK: %s", err)}
 	// 	return
 	// }
+	return
+}
+
+func (listener *tcpListener) dial(dst *net.TCPAddr) (conn *net.TCPConn, err error) {
+	fd, err := listener.open()
+	if err != nil {
+		return
+	}
 	err = syscall.Connect(fd, tcpAddrToSocketAddr(dst))
 	if err != nil {
 		if err2, ok := err.(syscall.Errno); ok && err2 == syscall.EINPROGRESS {
@@ -103,28 +105,24 @@ func (listener *tcpListener) dial(dst *net.TCPAddr) (conn *net.TCPConn, err erro
 }
 
 func (listener *tcpListener) handle(conn *net.TCPConn) {
-	log.Printf("accept tcp src=%s dst=%s", conn.RemoteAddr(), conn.LocalAddr().String())
+	srcAddr := conn.RemoteAddr()
+	log.Printf("accept tcp src=%s dst=%s", srcAddr.String(), conn.LocalAddr().String())
 	defer conn.Close()
-	remoteAddr := conn.LocalAddr().(*net.TCPAddr)
-	remote, err := listener.dial(remoteAddr)
+	dstAddr := conn.LocalAddr().(*net.TCPAddr)
+	dst, err := listener.dial(dstAddr)
 	if err != nil {
 		log.Printf("proxy connection: %s", err)
 		return
 	}
-	defer remote.Close()
-	wg := sync.WaitGroup{}
-	wg.Add(2)
-	go func() {
-		_, err := io.Copy(remote, conn)
-		log.Printf("done copy local to remote %s", err)
-		wg.Done()
-	}()
-	go func() {
-		_, err := io.Copy(conn, remote)
-		log.Printf("done copy remote to local %s", err)
-		wg.Done()
-	}()
-	wg.Wait()
+	defer dst.Close()
+	var h handler
+	if listener.qos != nil {
+		h = listener.qos.Handler("tcp", getIP(srcAddr), getIP(dstAddr))
+	}
+	if h == nil {
+		h = &copyHandler{}
+	}
+	h.Serve(conn, dst)
 }
 
 func (listener *tcpListener) Serve() {

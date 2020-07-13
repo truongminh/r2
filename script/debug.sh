@@ -1,0 +1,1 @@
+ss --tcp --numeric --processes
