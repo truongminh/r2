@@ -1,7 +1,7 @@
 # TCP transparent proxy
 
 ## How to use
-- `sh ip.sh`
+- `cp config.toml.example config.toml`
 - `go build -o r2`
 - `sudo ./r2 -port=8080`
 

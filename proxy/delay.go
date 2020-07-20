@@ -1,4 +1,4 @@
-package main
+package proxy
 
 import (
 	"io"
@@ -12,6 +12,14 @@ import (
 type delayHandler struct {
 	delay time.Duration
 	hosts []string
+}
+
+// NewDelay handler
+func NewDelay(delay time.Duration, hosts []string) Handler {
+	return &delayHandler{
+		delay: delay,
+		hosts: hosts,
+	}
 }
 
 type delayIO struct {

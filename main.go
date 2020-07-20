@@ -2,28 +2,26 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log"
-	"strings"
-	"time"
+	"r2/config"
+	"r2/proxy"
 )
 
 func main() {
-	port := flag.Int("port", 8080, "http port")
-	delay := flag.Int("delay", 0, "delay in milliseconds")
-	hosts := flag.String("hosts", "", "list of hosts")
-	flag.Parse()
-	log.Printf("port=%d, delay=%d ms", *port, *delay)
+	if config.V.Mode == "clear" {
+		log.Printf("clear route")
+		config.Clear()
+		return
+	}
+	config.Print()
+	config.Setup()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	listener, err := newTcp(ctx, fmt.Sprintf(":%d", *port))
+	listener, err := proxy.NewTCP(ctx, fmt.Sprintf(":%d", config.V.Port))
 	if err != nil {
 		log.Fatal(err)
 	}
-	listener.qos = &qos{
-		delay:      time.Millisecond * time.Duration(*delay),
-		delayHosts: strings.Split(*hosts, ","),
-	}
-	listener.Serve()
+	listener.Handler = proxy.NewDelay(config.V.Delay, config.V.Hosts)
+	listener.Start()
 }

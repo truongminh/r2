@@ -1,0 +1,15 @@
+# R2 Config
+
+Port=8080
+Delay=100 # ms
+Hosts=["dantri.com.vn"]
+
+[Wan]
+Name="enp0s3"
+Gateway="10.0.2.2"
+
+[Lan]
+Name="enp0s8"
+Subnet="192.168.10.0/24"
+Gateway="192.168.10.1"
+
