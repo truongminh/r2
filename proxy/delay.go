@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"io"
 	"log"
 	"net"
@@ -22,13 +23,20 @@ func NewDelay(delay time.Duration, hosts []string) Handler {
 	}
 }
 
+func (d *delayHandler) delayOf(host string) time.Duration {
+	for _, s := range d.hosts {
+		if strings.HasSuffix(s, host) {
+			return d.delay
+		}
+	}
+	return 0
+}
+
 type delayIO struct {
-	io.Reader
-	io.Writer
-	count  int
-	enable bool
-	delay  time.Duration
-	hosts  []string
+	read    int
+	written int
+	delay   time.Duration
+	src     io.ReadWriter
 }
 
 func onlyReadable(buf []byte) string {
@@ -41,33 +49,38 @@ func onlyReadable(buf []byte) string {
 	return string(s)
 }
 
-func (d *delayIO) Read(buf []byte) (int, error) {
-	if d.count < 2 {
-		s := onlyReadable(buf)
-		if len(s) > 0 && strings.Contains(s, "h2http/") {
-			for _, h := range d.hosts {
-				if strings.Contains(s, h) {
-					log.Printf("delay host=%s header=%s", h, s)
-				}
-				d.enable = true
-			}
-		}
-		d.count++
+func (d *delayIO) Read(buf []byte) (n int, err error) {
+	n, err = d.src.Read(buf)
+	if err != nil {
+		return
 	}
-	return d.Reader.Read(buf)
+	d.read += n
+	return
 }
 
-func (d *delayIO) Write(buf []byte) (int, error) {
-	if d.enable {
-		time.Sleep(d.delay)
-	}
-	return d.Writer.Write(buf)
+func (d *delayIO) Write(buf []byte) (n int, err error) {
+	time.Sleep(d.delay)
+	n, err = d.src.Write(buf)
+	d.written += n
+	return
 }
 
 func (d *delayHandler) Serve(src net.Conn, dst net.Conn) error {
+	var handshakeBuf bytes.Buffer
+	host, _, _ := extractSNI(io.TeeReader(src, &handshakeBuf))
+	_, err := dst.Write(handshakeBuf.Bytes())
+	if err != nil {
+		return err
+	}
+	var rw io.ReadWriter = src
+	if len(host) != 0 {
+		// TLS 1.3 with SNI
+		delay := d.delayOf(host)
+		rw = &delayIO{src: src, delay: delay}
+		log.Printf("host=%s delay=%dms", host, delay/time.Millisecond)
+	}
 	wg := sync.WaitGroup{}
 	wg.Add(2)
-	rw := &delayIO{Reader: src, Writer: src, hosts: d.hosts, delay: d.delay}
 	go func() {
 		io.Copy(rw, dst)
 		wg.Done()
