@@ -21,7 +21,7 @@ func loadFile() {
 		}
 		log.Fatal(err)
 	}
-	err = toml.Unmarshal(buf, V)
+	err = toml.Unmarshal(buf, raw)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func parseFlags() {
 	port := flag.Int("port", 0, "http port")
 	delay := flag.Int("delay", 0, "delay in milliseconds")
 	hosts := flag.String("hosts", "", "list of hosts")
-	clear := flag.Bool("clear", false, "clear route")
+	mode := flag.String("mode", "normal", "run mode: normal, clear")
 	flag.Parse()
 	if *port > 0 {
 		V.Port = *port
@@ -39,9 +39,7 @@ func parseFlags() {
 	if *delay > 0 {
 		V.Delay = time.Duration(*delay)
 	}
-	if *clear {
-		V.Mode = "clear"
-	}
+	V.Mode = *mode
 	if len(*hosts) > 0 {
 		V.Hosts = strings.Split(*hosts, ",")
 	}
@@ -60,7 +58,10 @@ func defaultConfig() {
 
 func init() {
 	loadFile()
-	// parseFlags()
+	err := V.apply(raw)
+	if err != nil {
+		log.Fatal(err)
+	}
+	parseFlags()
 	defaultConfig()
-	V.Delay *= time.Millisecond
 }
