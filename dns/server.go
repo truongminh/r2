@@ -13,7 +13,7 @@ func Start(addr string) {
 	// attach request handler func
 	dns.HandleFunc(".", proxy.Serve)
 	server := &dns.Server{Addr: addr, Net: "udp"}
-	log.Printf("Starting at %s\n", addr)
+	log.Printf("dns server on %s\n", addr)
 	err := server.ListenAndServe()
 	defer server.Shutdown()
 	if err != nil {
