@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"net"
 	"r2/config/route"
 	"time"
@@ -18,7 +19,10 @@ type rawConfig struct {
 		Name    string
 		Subnet  string
 		Gateway string
-		DHCP    []string
+		DHCP    struct {
+			StartIP string
+			EndIP   string
+		}
 	}
 	Mode string
 }
@@ -32,6 +36,9 @@ type ParsedConfig struct {
 	Lo    route.Network
 	DHCP  struct {
 		StartIP net.IP
+	}
+	DNS struct {
+		Addr string
 	}
 	Mode string
 }
@@ -62,6 +69,7 @@ func (c *ParsedConfig) apply(r *rawConfig) (err error) {
 		return
 	}
 	c.Mode = r.Mode
-	c.DHCP.StartIP = net.ParseIP(r.Lan.DHCP[0])
+	c.DHCP.StartIP = net.ParseIP(r.Lan.DHCP.StartIP)
+	c.DNS.Addr = fmt.Sprintf("%s:53", c.Lan.Gateway.String())
 	return
 }

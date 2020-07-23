@@ -8,6 +8,10 @@ import (
 )
 
 func SetupTProxy() error {
+	err := ipForward()
+	if err != nil {
+		return err
+	}
 	ipt, err := iptables.New()
 	if err != nil {
 		return err

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"r2/config"
+	"r2/dns"
 	"r2/proxy"
 )
 
@@ -29,7 +30,7 @@ func main() {
 		log.Fatal(err)
 	}
 	listener.Handler = proxy.NewDelay(config.V.Delay, config.V.Hosts)
-	// lan := config.V.Lan
+	// `lan := config.V.Lan
 	// dbcpConfig := dhcp.ServerConfig{
 	// 	Interface:  lan.Name,
 	// 	ServerIP:   lan.Gateway,
@@ -38,5 +39,6 @@ func main() {
 	// 	StartIP:    config.V.DHCP.StartIP,
 	// }
 	// go dhcp.Start(dbcpConfig)
+	go dns.Start(config.V.DNS.Addr)
 	listener.Start()
 }
