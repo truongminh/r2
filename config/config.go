@@ -21,7 +21,7 @@ type rawConfig struct {
 		Gateway string
 		DHCP    struct {
 			StartIP string
-			EndIP   string
+			Length  byte
 		}
 	}
 	Mode string
@@ -36,6 +36,7 @@ type ParsedConfig struct {
 	Lo    route.Network
 	DHCP  struct {
 		StartIP net.IP
+		Length  byte
 	}
 	DNS struct {
 		Addr string
@@ -70,6 +71,7 @@ func (c *ParsedConfig) apply(r *rawConfig) (err error) {
 	}
 	c.Mode = r.Mode
 	c.DHCP.StartIP = net.ParseIP(r.Lan.DHCP.StartIP)
+	c.DHCP.Length = r.Lan.DHCP.Length
 	c.DNS.Addr = fmt.Sprintf("%s:53", c.Lan.Gateway.String())
 	return
 }

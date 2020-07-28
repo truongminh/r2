@@ -2,6 +2,7 @@ package route
 
 import (
 	"fmt"
+	"log"
 	"r2/iptables"
 
 	"github.com/vishvananda/netlink"
@@ -17,6 +18,23 @@ func SetupWan(wan Network) error {
 	err = ipt.AppendUnique("nat", "POSTROUTING", "-o", wan.Name, "-j", "MASQUERADE")
 	if err != nil {
 		return fmt.Errorf("iptables -t nat -A POSTROUTING -o enp0s3 -j MASQUERADE: %s", err)
+	}
+	routes, err := netlink.RouteList(wan.link, netlink.FAMILY_ALL)
+	if err != nil {
+		return err
+	}
+	if wan.Gateway == nil {
+		for _, route := range routes {
+			if route.Gw != nil {
+				// default
+				wan.Gateway = route.Gw
+				log.Printf("detected wan gateway %s", route.Gw)
+				break
+			}
+		}
+	}
+	if wan.Gateway == nil {
+		return fmt.Errorf("wan interface %s without gateway", wan.Name)
 	}
 	// add route
 	// ip r add default via 10.0.2.2 dev enp0s3
@@ -41,4 +59,20 @@ func ClearWan(wan Network) error {
 	}
 	ipt.Delete("nat", "POSTROUTING", "-o", wan.Name, "-j", "MASQUERADE")
 	return err
+}
+
+func init() {
+	ip, err := getOutboundIP()
+	if err != nil {
+		log.Fatal(err)
+	}
+	addrs, err := netlink.AddrList(nil, netlink.FAMILY_ALL)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, a := range addrs {
+		if a.IP.Equal(ip) {
+			log.Printf("%+v", a)
+		}
+	}
 }

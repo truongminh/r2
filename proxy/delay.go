@@ -25,7 +25,7 @@ func NewDelay(delay time.Duration, hosts []string) Handler {
 
 func (d *delayHandler) delayOf(host string) time.Duration {
 	for _, s := range d.hosts {
-		if strings.HasSuffix(s, host) {
+		if strings.HasSuffix(host, s) {
 			return d.delay
 		}
 	}

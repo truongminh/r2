@@ -15,7 +15,10 @@ func SetupLan(lan Network) error {
 	}
 	// PREROUTING -i enp0s8 -p tcp -j TPROXY --on-port 8080 --on-ip 0.0.0.0 --tproxy-mark 0x1/0x1
 	ipt.AppendUnique("mangle", "PREROUTING", "-i", lan.Name, "-p", "tcp", "-j", "TPROXY", "--on-port", "8080", "--on-ip", "0.0.0.0", "--tproxy-mark", "0x1/0x1")
-
+	err = netlink.LinkSetUp(lan.link)
+	if err != nil {
+		return fmt.Errorf("set link %s up: %s", lan.Name, err)
+	}
 	addr := *lan.Subnet
 	addr.IP = lan.Gateway
 	// ip a add 192.168.10.1/24 dev enp0s8

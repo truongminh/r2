@@ -20,6 +20,7 @@ func NewNetwork(name string) (network Network, err error) {
 	network.link, err = netlink.LinkByName(name)
 	if err != nil {
 		err = fmt.Errorf("network interface %s: %s", name, err)
+		return
 	}
 	network.Index = network.link.Attrs().Index
 	return

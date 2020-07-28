@@ -9,17 +9,16 @@ import (
 )
 
 type DNSProxy struct {
+	Cache         map[string]*dns.RR
 	DefaultServer string
 }
 
 func (proxy *DNSProxy) getResponse(requestMsg *dns.Msg) (*dns.Msg, error) {
 	responseMsg := new(dns.Msg)
-	if len(requestMsg.Question) > 0 {
-		question := requestMsg.Question[0]
-		dnsServer := proxy.DefaultServer
-
+	dnsServer := proxy.DefaultServer
+	for _, question := range requestMsg.Question {
 		switch question.Qtype {
-		case dns.TypeA, dns.TypeAAAA:
+		case dns.TypeA:
 			answer, err := proxy.processTypeA(dnsServer, &question, requestMsg)
 			if err != nil {
 				return responseMsg, err
@@ -55,6 +54,11 @@ func (proxy *DNSProxy) processOtherTypes(dnsServer string, q *dns.Question, requ
 }
 
 func (proxy *DNSProxy) processTypeA(dnsServer string, q *dns.Question, requestMsg *dns.Msg) (*dns.RR, error) {
+	rr, ok := proxy.Cache[q.Name]
+	if ok {
+		return rr, nil
+	}
+
 	queryMsg := new(dns.Msg)
 	requestMsg.CopyTo(queryMsg)
 	queryMsg.Question = []dns.Question{*q}
@@ -65,14 +69,16 @@ func (proxy *DNSProxy) processTypeA(dnsServer string, q *dns.Question, requestMs
 	}
 
 	if len(msg.Answer) > 0 {
-		return &msg.Answer[len(msg.Answer)-1], nil
+		a := &msg.Answer[len(msg.Answer)-1]
+		proxy.Cache[q.Name] = a
+		return a, nil
 	}
 	return nil, fmt.Errorf("not found")
 }
 
 func lookup(server string, m *dns.Msg) (*dns.Msg, error) {
 	dnsClient := new(dns.Client)
-	dnsClient.Net = "udp"
+	dnsClient.Net = "tcp"
 	response, _, err := dnsClient.Exchange(m, server)
 	if err != nil {
 		return nil, err
@@ -86,7 +92,7 @@ func (proxy *DNSProxy) Serve(w dns.ResponseWriter, r *dns.Msg) {
 	case dns.OpcodeQuery:
 		m, err := proxy.getResponse(r)
 		if err != nil {
-			// log.Printf("dns lookup %s with error: %s\n", r, err.Error())
+			log.Printf("dns lookup %s with error: %s\n", r, err.Error())
 			m.SetReply(r)
 			w.WriteMsg(m)
 			return
